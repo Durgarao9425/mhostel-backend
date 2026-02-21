@@ -169,7 +169,8 @@ export const createStudent = async (req: AuthRequest, res: Response) => {
       admission_status,
       status,
       room_id,
-      floor_number
+      floor_number,
+      monthly_rent
     } = req.body;
 
     // Determine hostel_id from JWT token for owners
