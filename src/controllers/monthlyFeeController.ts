@@ -800,16 +800,6 @@ export const getStudentAllPayments = async (req: AuthRequest, res: Response) => 
   }
 };
 
-/**
- * Helper: Get balance from previous month record for a student
- */
-async function getPreviousMonthBalance(studentId: number, prevMonth: string, trx: any): Promise<number> {
-  const prevRecord = await trx('monthly_fees')
-    .where({ student_id: studentId, fee_month: prevMonth })
-    .first();
-  return prevRecord ? parseFloat(prevRecord.balance || 0) : 0;
-}
-
 // Record a payment for a monthly fee
 export const recordPayment = async (req: AuthRequest, res: Response) => {
   console.log('[recordPayment] Request received');
