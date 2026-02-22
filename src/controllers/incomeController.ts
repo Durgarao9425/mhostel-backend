@@ -368,8 +368,13 @@ export const getIncomeAnalytics = async (req: AuthRequest, res: Response) => {
       for (let i = 6; i >= 0; i--) {
         const d = new Date(refDate);
         d.setDate(d.getDate() - i);
-        const ds = d.toISOString().split('T')[0];
-        const val = transactions.filter(t => t.date.startsWith(ds)).reduce((s, t) => s + t.amount, 0);
+        const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const val = transactions
+          .filter(t => {
+            const tDate = typeof t.date === 'string' ? t.date.split('T')[0] : new Date(t.date).toISOString().split('T')[0];
+            return tDate === ds;
+          })
+          .reduce((s, t) => s + t.amount, 0);
         graph.push({ label: days[d.getDay()], value: val });
       }
     } else {

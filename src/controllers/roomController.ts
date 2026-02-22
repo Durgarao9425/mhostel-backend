@@ -166,8 +166,9 @@ export const getRoomById = async (req: AuthRequest, res: Response) => {
     const occupiedCount = students.length;
 
     // Use already joined room_type info for capacity fallback
-    const totalCapacity = (room.capacity && parseInt(room.capacity) > 0)
-      ? parseInt(room.capacity)
+    const capValue = room.capacity || 0;
+    const totalCapacity = (parseInt(capValue) > 0)
+      ? parseInt(capValue)
       : getCapacityFromRoomTypeName(room.room_type_name || '', room.room_type_description || null);
 
     const availableBeds = Math.max(0, totalCapacity - occupiedCount);
@@ -184,9 +185,13 @@ export const getRoomById = async (req: AuthRequest, res: Response) => {
         occupants: students
       }
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('getRoomById Error:', error);
-    res.status(500).json({ success: false, error: 'Internal Server Error' });
+    res.status(500).json({
+      success: false,
+      error: 'Internal Server Error',
+      details: error?.message
+    });
   }
 };
 
