@@ -130,13 +130,24 @@ export const getRooms = async (req: AuthRequest, res: Response) => {
 export const getRoomById = async (req: AuthRequest, res: Response) => {
   try {
     const { roomId } = req.params;
+    console.log('[getRoomById] ID requested:', roomId);
 
     const room = await db('rooms as r')
       .leftJoin('room_types as rt', 'r.room_type_id', 'rt.room_type_id')
       .leftJoin('hostel_master as h', 'r.hostel_id', 'h.hostel_id')
       .select(
-        'r.*',
-        'rt.room_type_name as room_type_name',
+        'r.room_id',
+        'r.hostel_id',
+        'r.room_number',
+        'r.room_type_id',
+        'r.floor_number',
+        'r.capacity',
+        'r.occupied_beds',
+        'r.rent_per_bed',
+        'r.amenities',
+        'r.status',
+        'r.is_available',
+        'rt.room_type_name',
         'rt.description as room_type_description',
         'h.hostel_name'
       )
@@ -170,22 +181,23 @@ export const getRoomById = async (req: AuthRequest, res: Response) => {
 
     const occupiedCount = students.length;
 
-    // Use already joined room_type info for capacity fallback
-    const capValue = room.capacity;
-    console.log('[getRoomById] Room capacity value:', capValue, 'Type:', typeof capValue);
-
+    // Capacity: use r.capacity first, fall back to room type name, then hardcode 2
+    const rawCap = (room as any).capacity;
     let totalCapacity = 0;
-    if (capValue !== null && capValue !== undefined) {
-      const parsed = parseInt(String(capValue));
-      if (!isNaN(parsed)) totalCapacity = parsed;
+    if (rawCap !== undefined && rawCap !== null) {
+      const parsed = parseInt(String(rawCap));
+      if (!isNaN(parsed) && parsed > 0) totalCapacity = parsed;
     }
-
-    if (!(totalCapacity > 0)) {
-      totalCapacity = getCapacityFromRoomTypeName(room.room_type_name || '', room.room_type_description || null);
+    if (totalCapacity <= 0) {
+      totalCapacity = getCapacityFromRoomTypeName(
+        (room as any).room_type_name || '',
+        (room as any).room_type_description || null
+      );
     }
+    if (totalCapacity <= 0) totalCapacity = 2; // final fallback
 
     const availableBeds = Math.max(0, totalCapacity - occupiedCount);
-    console.log('[getRoomById] Calculation result:', { totalCapacity, occupiedCount, availableBeds });
+    console.log('[getRoomById] Result:', { room: (room as any).room_number, cap: totalCapacity, occ: occupiedCount });
 
     res.json({
       success: true,
