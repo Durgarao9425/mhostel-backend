@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import db from '../config/database.js';
 import { AuthRequest } from '../middleware/auth.js';
+import ExcelJS from 'exceljs';
 
 // Get all income records
 export const getAllIncome = async (req: AuthRequest, res: Response) => {
@@ -400,5 +401,118 @@ export const getIncomeAnalytics = async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error('getIncomeAnalytics Error:', error);
     res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+};
+
+// Export income records to Excel
+export const getIncomeExport = async (req: AuthRequest, res: Response) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const user = req.user;
+    const hostelId = user?.hostel_id;
+
+    // 1. Fetch Income records
+    let incomeQuery = db('income as i')
+      .leftJoin('payment_modes as pm', 'i.payment_mode_id', 'pm.payment_mode_id')
+      .select('i.*', 'pm.payment_mode_name as payment_mode');
+
+    if (user?.role_id === 2 && hostelId) {
+      incomeQuery = incomeQuery.where('i.hostel_id', hostelId);
+    }
+    if (startDate && endDate) {
+      incomeQuery = incomeQuery.whereBetween('i.income_date', [startDate, endDate]);
+    }
+
+    // 2. Fetch Fee Payment records
+    let feeQuery = db('fee_payments as fp')
+      .leftJoin('students as s', 'fp.student_id', 's.student_id')
+      .leftJoin('payment_modes as pm', 'fp.payment_mode_id', 'pm.payment_mode_id')
+      .select('fp.*', 's.first_name', 's.last_name', 'pm.payment_mode_name as payment_mode');
+
+    if (user?.role_id === 2 && hostelId) {
+      feeQuery = feeQuery.where('fp.hostel_id', hostelId);
+    }
+    if (startDate && endDate) {
+      feeQuery = feeQuery.whereBetween('fp.payment_date', [startDate, endDate]);
+    }
+
+    const [incomes, feePayments, expenses] = await Promise.all([
+      incomeQuery,
+      feeQuery,
+      db('expenses as e')
+        .leftJoin('expense_categories as ec', 'e.category_id', 'ec.category_id')
+        .select('e.*', 'ec.category_name')
+        .where(function () {
+          if (user?.role_id === 2 && hostelId) this.where('e.hostel_id', hostelId);
+          if (startDate && endDate) this.whereBetween('e.expense_date', [startDate, endDate]);
+        })
+    ]);
+
+    // Create workbook
+    const workbook = new ExcelJS.Workbook();
+
+    // --- SHEET 1: INCOME ---
+    const worksheet = workbook.addWorksheet('Income');
+    worksheet.columns = [
+      { header: 'Date', key: 'date', width: 15 },
+      { header: 'Source/Student', key: 'title', width: 25 },
+      { header: 'Type', key: 'type', width: 12 },
+      { header: 'Amount', key: 'amount', width: 12 },
+      { header: 'Payment Mode', key: 'mode', width: 15 },
+      { header: 'Details', key: 'details', width: 30 }
+    ];
+
+    incomes.forEach(inc => {
+      worksheet.addRow({
+        date: inc.income_date,
+        title: inc.source || 'Other Income',
+        amount: parseFloat(inc.amount),
+        type: 'Other',
+        mode: inc.payment_mode || 'Cash',
+        details: inc.description || '-'
+      });
+    });
+
+    feePayments.forEach(fp => {
+      worksheet.addRow({
+        date: fp.payment_date,
+        title: `${fp.first_name || 'Student'} ${fp.last_name || ''}`,
+        amount: parseFloat(fp.amount),
+        type: 'Rent',
+        mode: fp.payment_mode || 'Cash',
+        details: `Rent Payment - Student ID: ${fp.student_id}`
+      });
+    });
+    worksheet.getRow(1).font = { bold: true };
+
+    // --- SHEET 2: EXPENSES ---
+    const expSheet = workbook.addWorksheet('Expenses');
+    expSheet.columns = [
+      { header: 'Date', key: 'date', width: 15 },
+      { header: 'Title', key: 'title', width: 25 },
+      { header: 'Category', key: 'category', width: 15 },
+      { header: 'Amount', key: 'amount', width: 12 },
+      { header: 'Description', key: 'details', width: 30 }
+    ];
+
+    expenses.forEach(exp => {
+      expSheet.addRow({
+        date: exp.expense_date,
+        title: exp.title,
+        category: exp.category_name,
+        amount: parseFloat(exp.amount),
+        details: exp.description || '-'
+      });
+    });
+    expSheet.getRow(1).font = { bold: true };
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=report_${startDate || 'all'}.xlsx`);
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error('getIncomeExport Error:', error);
+    res.status(500).json({ success: false, error: 'Failed to export data' });
   }
 };

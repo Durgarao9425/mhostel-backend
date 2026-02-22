@@ -1,12 +1,13 @@
 import express from 'express';
-import { authMiddleware } from '../middleware/auth.js';
+import { authMiddleware, queryTokenMiddleware } from '../middleware/auth.js';
 import {
   getAllIncome,
   createIncome,
   updateIncome,
   deleteIncome,
   getIncomeSummary,
-  getIncomeAnalytics
+  getIncomeAnalytics,
+  getIncomeExport
 } from '../controllers/incomeController.js';
 
 const router = express.Router();
@@ -21,5 +22,6 @@ router.put('/:incomeId', updateIncome);
 router.delete('/:incomeId', deleteIncome);
 router.get('/summary', getIncomeSummary);
 router.get('/analytics', getIncomeAnalytics);
+router.get('/export', queryTokenMiddleware, getIncomeExport);
 
 export default router;

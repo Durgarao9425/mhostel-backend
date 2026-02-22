@@ -150,14 +150,19 @@ export const getRoomById = async (req: AuthRequest, res: Response) => {
     // Parse amenities
     let amenitiesArray = [];
     if (room.amenities) {
-      try {
-        amenitiesArray = JSON.parse(room.amenities);
-      } catch (e) {
-        amenitiesArray = room.amenities.split(',').map((a: string) => a.trim()).filter(Boolean);
+      if (typeof room.amenities === 'string') {
+        try {
+          amenitiesArray = JSON.parse(room.amenities);
+        } catch (e) {
+          amenitiesArray = room.amenities.split(',').map((a: string) => a.trim()).filter(Boolean);
+        }
+      } else if (Array.isArray(room.amenities)) {
+        amenitiesArray = room.amenities;
       }
     }
 
     // Get occupants
+    console.log('[getRoomById] Fetching occupants for room:', roomId);
     const students = await db('students')
       .where('room_id', roomId)
       .where('status', 1)
@@ -166,12 +171,21 @@ export const getRoomById = async (req: AuthRequest, res: Response) => {
     const occupiedCount = students.length;
 
     // Use already joined room_type info for capacity fallback
-    const capValue = room.capacity || 0;
-    const totalCapacity = (parseInt(capValue) > 0)
-      ? parseInt(capValue)
-      : getCapacityFromRoomTypeName(room.room_type_name || '', room.room_type_description || null);
+    const capValue = room.capacity;
+    console.log('[getRoomById] Room capacity value:', capValue, 'Type:', typeof capValue);
+
+    let totalCapacity = 0;
+    if (capValue !== null && capValue !== undefined) {
+      const parsed = parseInt(String(capValue));
+      if (!isNaN(parsed)) totalCapacity = parsed;
+    }
+
+    if (!(totalCapacity > 0)) {
+      totalCapacity = getCapacityFromRoomTypeName(room.room_type_name || '', room.room_type_description || null);
+    }
 
     const availableBeds = Math.max(0, totalCapacity - occupiedCount);
+    console.log('[getRoomById] Calculation result:', { totalCapacity, occupiedCount, availableBeds });
 
     res.json({
       success: true,
@@ -187,6 +201,7 @@ export const getRoomById = async (req: AuthRequest, res: Response) => {
     });
   } catch (error: any) {
     console.error('getRoomById Error:', error);
+    console.error('Stack:', error?.stack);
     res.status(500).json({
       success: false,
       error: 'Internal Server Error',
